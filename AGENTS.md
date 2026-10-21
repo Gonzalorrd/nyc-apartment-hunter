@@ -49,6 +49,9 @@ including mandatory monthly fees, commute destination 55 Hudson Yards.
 - `docs/research-methodology.md`: before changing scoring or doing property research.
 - `docs/agent-workflows.md`: for discovery, verification, commute or outreach work.
 - `plans/mvp.md`: to resume implementation or review acceptance evidence.
+- `plans/share-site.md`: start here for share-site status, open research gaps and next
+  steps. To check the page at phone width, run
+  `node scripts/phone_screenshot.mjs <url> <out.png>`.
 - Update README/user guide when commands or workflows change; add regression tests
   for cost, eligibility, import or persistence behavior changes.
 

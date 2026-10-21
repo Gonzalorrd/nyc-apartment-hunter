@@ -3,6 +3,34 @@
 Living document. Update Progress, Surprises & Discoveries, Decision Log, and Outcomes
 as work proceeds. Anyone should be able to resume the work from this file plus the repo.
 
+## Status and next steps (read this first)
+As of 2026-10-20 the plan is complete. The site is live at
+https://gonzalorrd.github.io/nyc-apartment-hunter/ (pipeline docs at `/pipeline/`),
+built from the public repo `Gonzalorrd/nyc-apartment-hunter` by `.github/workflows/site.yml`.
+The routine is in the README section "Share the results".
+
+Open research gaps (from the first build):
+- No exact street address yet, so not on the map: Parc Vendome, Journal Squared,
+  The Reserve at Estuary, Horizon Heights, 555TEN, Jackson Park, Sven, Gotham West,
+  Mercedes House. Parc Vendome is also the only `unverified` lead.
+- Link Apartments QPN (41-46 27th Street) has no reliable Census match. Add ZIP 11101
+  in the app.
+- 0 units, commutes and risks are recorded. The unit cards and cost charts have only
+  been checked on synthetic data. Re-check them with `scripts/phone_screenshot.mjs`
+  after the first real units are published.
+- All 28 checked leads were verified 2026-10-19. The site starts flagging buildings
+  "out of date" after 30 days (from 2026-11-19), so re-check sources before then.
+
+Next:
+1. (User's chosen next step) Survey other people's open-source apartment-search repos
+   for features or code worth reusing: apartment-search projects, not tooling.
+2. Fill the gaps above, then `publish` and push.
+3. Optional later: dark mode, change notifications.
+
+Data safety: `data/apartments.db` is the only copy of the private research and is
+never committed. A local copy is in `data/backups/apartments-2026-10-20.db`
+(gitignored; same disk). Copy backups to a private encrypted location too.
+
 ## Purpose / Big Picture
 Today the search results live in a local Streamlit app and an Excel/CSV export, which
 is awkward to share. After this work the user can send their girlfriend one link,
