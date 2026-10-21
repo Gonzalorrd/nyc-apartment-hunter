@@ -252,8 +252,17 @@ Acceptance:
 - [x] (2026-10-20) M7 docs written before M6, so the first public commit includes them:
   README "Share the results", user guide "Sharing the search", data-model snapshot
   note, AGENTS commands/layout/pitfalls.
-- [ ] M6: create the public repo, push, enable Pages and watch the first run. Waiting
-  for the user's explicit go-ahead.
+- [x] (2026-10-20 21:20 NY) M6, after the user's go-ahead ("ok please proceed"):
+  - Created the public repo `Gonzalorrd/nyc-apartment-hunter`, enabled Pages
+    (`build_type=workflow`), then pushed `main` (commit `b795491`, 49 files, noreply
+    author).
+  - Run 39526500175 failed at job setup because `astral-sh/setup-uv@v10` doesn't exist.
+    Pinned `v10.3.0`.
+  - Run 39526594422 passed: checks 23 s, build 26 s, deploy 9 s.
+  - `/`, `/pipeline/index.html`, `buildings.csv` and `units.csv` all return HTTP 200. The
+    live page says "19 of 29 buildings" (the geocoder works from Actions). A phone-width
+    screenshot of the live page shows the map with every building and the office.
+  - The remote tree has no `.db`, `.xlsx`, `.pdf`, `.env`, log or build-output files.
 
 ## Surprises & Discoveries
 - 2026-10-20: The DB has no units, commutes, scores or coordinates yet. Version 1
@@ -301,6 +310,11 @@ Acceptance:
   That's harmless because Actions-based Pages deploys don't run Jekyll.
 - 2026-10-20 (M4): plotly's text labels on `scattermap` log a harmless missing-sprite
   warning (`-15`) and a CORS-blocked icon fetch in the browser console.
+- 2026-10-20 (M6): Not every action publishes a moving major tag: `astral-sh/setup-uv`
+  only has full versions (`v10.3.0`). actionlint doesn't catch this; check with
+  `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` before pushing.
+- 2026-10-20 (M6): Runner annotation: `ubuntu-latest` is migrating to Ubuntu 26 from
+  2026-10-19. Nothing to do now; pin `ubuntu-24.04` if the migration breaks the build.
 - 2026-10-20: GitHub disables scheduled workflows in public repos after 60 days with
   no repository activity. That is fine through December but worth knowing.
 
@@ -337,4 +351,32 @@ Acceptance:
   not meant for search engines — Claude
 
 ## Outcomes & Retrospective
-(Fill in at completion: achieved / not achieved / lessons / promotion candidates.)
+Achieved (2026-10-20):
+- The share link is live at https://gonzalorrd.github.io/nyc-apartment-hunter/, with
+  the chartbook pipeline docs at `/pipeline/`.
+- The pipeline is publish (laptop) -> validate -> enrich -> transform -> render ->
+  chartbook -> deploy. It runs on push, daily and on demand, and each run writes a
+  change summary.
+- 45 tests (15 new); M0–M7 validated.
+
+Not achieved / known gaps:
+- No units, commutes or risks have been entered yet, so the unit cards and cost charts
+  are untested on real data (only on a synthetic scratch copy).
+- 10 buildings are unmapped: 9 have no address and 1 has no reliable match.
+- Light theme only.
+- Household ratings are never published, by design.
+- There's no notification when the site changes.
+
+Lessons:
+- Put the privacy boundary at publish time (an allowlist), and gate it again in CI
+  (`validate`). That made a public repo safe without encryption.
+- Free geocoders fuzzy-match. Accept only matches whose street equals the query.
+- Look at real renders. Headless-browser defaults (minimum width, virtual time) produced
+  misleading "bugs".
+- Next step (D4): survey other people's apartment-search repos for reusable features.
+
+Promotion candidates (user decides; not applied):
+- Before pushing a workflow, check that every `uses:` tag exists; actionlint doesn't.
+- For phone-width screenshots, drive Chrome over CDP with a device-metrics override and
+  real waits. `--window-size` clamps to about 500 px, and `--virtual-time-budget`
+  stalls WebGL maps.
