@@ -1,0 +1,64 @@
+# Share-site pipeline: checks -> build (validate, enrich, transform, render, chartbook) -> deploy.
+# Input is only the committed public snapshot, site_data/snapshot.json.
+name: site
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 10 * * *' # daily, ~6 am New York: "checked N days ago" and freshness depend on the date
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2 # the previous commit's snapshot feeds the change report
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked
+      - name: Restore geocode cache
+        uses: actions/cache@v6
+        with:
+          path: share/_cache
+          key: geocode-${{ hashFiles('site_data/snapshot.json', 'share/share.toml') }}
+          restore-keys: geocode-
+      - name: Previous snapshot for the change report
+        run: |
+          mkdir -p share/_data
+          git show HEAD~1:site_data/snapshot.json > share/_data/previous_snapshot.json 2>/dev/null \
+            || rm -f share/_data/previous_snapshot.json
+      - name: Run pipeline
+        run: uv run doit
+      - name: Job summary
+        run: cat share/_data/run_summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: share/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,90 @@
+[project]
+id = "gonzalorrd/nyc-apartment-search"
+name = "NYC apartment search: share-site pipeline"
+description = "Validate, enrich and transform a public snapshot of the apartment search, then publish it to GitHub Pages."
+maintainer = "Gonzalorrd"
+repo_url = "https://github.com/Gonzalorrd/nyc-apartment-hunter"
+site_url = "https://gonzalorrd.github.io/nyc-apartment-hunter/pipeline/"
+os_compatibility = ["Windows", "Linux"]
+build = """
+uv run doit
+"""
+
+[dataframes.buildings]
+name = "Buildings"
+description = "Candidate buildings with map coordinates, research freshness and published unit counts."
+sources = ["Public building and listing pages", "US Census Geocoder"]
+providers = ["Our own research", "U.S. Census Bureau"]
+provider_links = ["https://github.com/Gonzalorrd/nyc-apartment-hunter", "https://geocoding.geo.census.gov/geocoder/"]
+access_types = ["Public", "Public"]
+pull_method = "apartment-hunter publish, then share_pipeline validate, enrich and transform"
+date_col = "verified_on"
+path = "./_data/buildings.parquet"
+docs = """
+One row per building lead in the public snapshot. `verified_on` is the date a public
+source was checked; `stale` is true after 30 days or when the record is unverified.
+Map coordinates are either entered in the app or come from the US Census Geocoder.
+A geocoder match is only accepted when its house number and street equal the query,
+because the geocoder fuzzy-matches (it turns "55 Hudson Yards" into "55 Hudson St").
+Buildings without an exact street address stay off the map; none are guessed.
+"""
+
+[dataframes.units]
+name = "Units"
+description = "Published apartments ranked by the app's own scoring, without household evaluations."
+sources = ["Public listing pages"]
+providers = ["Our own research"]
+provider_links = ["https://github.com/Gonzalorrd/nyc-apartment-hunter"]
+access_types = ["Public"]
+pull_method = "share_pipeline.transform calls scoring.rank_unit for every published unit"
+path = "./_data/units.parquet"
+docs = """
+`monthly_cost` is base rent plus mandatory fees. An unknown fee is missing, never
+zero. `eligibility` is `eligible` (meets every hard requirement with fresh
+evidence), `needs_verification` (some evidence is missing or stale) or `excluded`
+(fails a requirement, listed in `reasons`). Units either occupant marked as a deal
+breaker, and leased or unavailable units, are left out at publish time.
+"""
+
+[dataframes.neighborhoods]
+name = "Neighborhoods"
+description = "Building and unit counts and the cheapest known monthly cost per neighborhood."
+sources = ["Derived from Buildings and Units"]
+providers = ["Our own research"]
+provider_links = ["https://github.com/Gonzalorrd/nyc-apartment-hunter"]
+access_types = ["Public"]
+pull_method = "Group-by of the Buildings table"
+path = "./_data/neighborhoods.parquet"
+docs = "Aggregates of the Buildings table. Missing costs stay missing; they are never filled with zero."
+
+[charts.building_map]
+name = "Building map"
+description = "Where the candidate buildings are, with the office for reference."
+dataframe = "buildings"
+units = "Location"
+path = "./_output/building_map.html"
+docs = "Buildings with coordinates. When some buildings have an apartment that fits every requirement, those are highlighted and the rest are gray."
+
+[charts.cost_vs_commute]
+name = "Monthly cost vs. commute"
+description = "The trade-off between the all-in monthly cost and the door-to-door commute."
+dataframe = "units"
+units = "USD per month; minutes"
+path = "./_output/cost_vs_commute.html"
+docs = "One dot per unit with both a known monthly cost and a verified weekday-morning commute. The shaded corner is under budget and within the commute limit."
+
+[charts.cost_breakdown]
+name = "Monthly cost breakdown"
+description = "Base rent plus mandatory fees for each published unit."
+dataframe = "units"
+units = "USD per month"
+path = "./_output/cost_breakdown.html"
+docs = "Stacked bars of base rent and mandatory fees. Utilities and one-time costs are excluded."
+
+[charts.neighborhood_counts]
+name = "Buildings by neighborhood"
+description = "How many candidate buildings each neighborhood has."
+dataframe = "neighborhoods"
+units = "Buildings"
+path = "./_output/neighborhood_counts.html"
+docs = "Count of building leads per neighborhood in the public snapshot."

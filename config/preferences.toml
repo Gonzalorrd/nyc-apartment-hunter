@@ -1,0 +1,17 @@
+budget = 4000
+preferred_commute = 30
+max_commute = 40
+move_start = "2026-12-01"
+move_end = "2026-12-31"
+preferred_move_end = "2026-12-15"
+stale_days = 7
+destination = "55 Hudson Yards, New York, NY 10001"
+
+[weights]
+cost = 20
+commute = 20
+condition = 20
+quality = 15
+amenities = 10
+neighborhood = 10
+management = 5

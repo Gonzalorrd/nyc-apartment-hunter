@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ config.title }}</title>
+<script src="{{ plotly_js }}" charset="utf-8"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --hairline: rgba(11, 11, 11, 0.10); --accent: #2a78d6; --warn-ink: #8a5a00;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); line-height: 1.45; }
+  .page { max-width: 960px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 6px; }
+  h2 { font-size: 1.15rem; margin: 0 0 4px; }
+  h3 { font-size: 1rem; margin: 6px 0 0; }
+  a { color: #1c5cab; }
+  .lede { margin: 0; color: var(--ink-2); }
+  .meta, .sub { margin: 2px 0 12px; color: var(--muted); font-size: 0.9rem; }
+  section { margin-top: 28px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 20px; }
+  .tile, .card, .chart, .buildings li, .notice {
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
+  }
+  .tile { padding: 12px 14px; }
+  .tile-label { color: var(--ink-2); font-size: 0.85rem; }
+  .tile-value { font-size: 1.7rem; font-weight: 600; margin-top: 2px; }
+  .notice { padding: 12px 14px; margin-top: 16px; color: var(--ink-2); }
+  .chart { padding: 6px; overflow: hidden; }
+  .empty { color: var(--muted); padding: 12px; margin: 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--ink-2); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .price { font-size: 1.5rem; font-weight: 600; margin-top: 6px; }
+  .price.unknown { font-size: 1.05rem; font-weight: 500; color: var(--ink-2); }
+  .price span { font-size: 0.85rem; font-weight: 400; color: var(--muted); margin-left: 4px; }
+  .facts { margin: 4px 0; padding-left: 18px; color: var(--ink-2); font-size: 0.9rem; }
+  .reasons { margin: 0; font-size: 0.85rem; color: var(--ink-2); }
+  .filter { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--ink-2); }
+  .filter input { font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid #c3c2b7; border-radius: 10px; background: var(--surface); }
+  .buildings { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .buildings li { padding: 10px 14px; }
+  .b-head { font-weight: 600; }
+  .b-place { font-weight: 400; color: var(--muted); font-size: 0.9rem; margin-left: 4px; }
+  .b-meta { color: var(--ink-2); font-size: 0.88rem; }
+  .warn { color: var(--warn-ink); }
+  footer { margin-top: 36px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--hairline); padding-top: 12px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <h1>{{ config.title }}</h1>
+    <p class="lede">A one-bedroom for two, moving in December. Budget {{ budget }} a month including
+      mandatory fees, and a commute of {{ summary.max_commute|round|int }} minutes or less to {{ config.office_label }}.</p>
+    <p class="meta">Updated {{ as_of }}</p>
+  </header>
+
+  <section class="kpis" aria-label="Headline numbers">
+    {% for k in kpis %}
+    <div class="tile"><div class="tile-label">{{ k.label }}</div><div class="tile-value">{{ k.value }}</div></div>
+    {% endfor %}
+  </section>
+
+  {% if not cards %}
+  <p class="notice">No specific apartments are published yet. These are the buildings we're researching.
+    Apartments, prices and commutes show up here once we've confirmed them.</p>
+  {% endif %}
+
+  <section>
+    <h2>Where they are</h2>
+    <p class="sub">{{ summary.buildings_mapped }} of {{ summary.buildings }} buildings have an exact address on the
+      map{% if summary.office and has_chart.building_map %}, plus the office{% endif %}. Tap a dot for details.</p>
+    <div class="chart">{{ charts.building_map }}</div>
+  </section>
+
+  {% if cards %}
+  <section>
+    <h2>Apartments</h2>
+    <p class="sub">Best matches first. "Needs checking" means something is still unknown or out of date,
+      not that it fails.</p>
+    <div class="cards">
+      {% for c in cards %}
+      <article class="card">
+        <div class="badge"><span class="dot" style="background: {{ c.status.color }}"></span>{{ c.status.icon }} {{ c.status.label }}</div>
+        <h3>{{ c.title }}</h3>
+        {% if c.neighborhood %}<div class="sub">{{ c.neighborhood }}</div>{% endif %}
+        {% if c.cost %}<div class="price">{{ c.cost }}<span>a month, all-in</span></div>
+        {% else %}<div class="price unknown">Monthly cost not known yet</div>{% endif %}
+        <ul class="facts">
+          <li>{{ c.breakdown }}</li><li>{{ c.commute }}</li><li>{{ c.available }}</li><li>{{ c.checked }}</li>
+        </ul>
+        {% if c.reasons %}<p class="reasons">Ruled out because of: {{ c.reasons }}</p>{% endif %}
+        {% if c.url %}<a href="{{ c.url }}" target="_blank" rel="noopener noreferrer">Open listing</a>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if has_chart.cost_vs_commute %}
+  <section>
+    <h2>Cost vs. commute</h2>
+    <p class="sub">The shaded corner is under budget and within the commute limit.</p>
+    <div class="chart">{{ charts.cost_vs_commute }}</div>
+  </section>
+  {% endif %}
+
+  {% if has_chart.cost_breakdown %}
+  <section>
+    <h2>Monthly cost per apartment</h2>
+    <p class="sub">Base rent plus mandatory fees. Utilities, deposits and move-in fees are not included.</p>
+    <div class="chart">{{ charts.cost_breakdown }}</div>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>All buildings</h2>
+    <label class="filter"><span>Search</span>
+      <input id="filter" type="search" placeholder="Name, neighborhood or manager" autocomplete="off">
+    </label>
+    <p class="sub" id="count">{{ buildings|length }} buildings</p>
+    <ul class="buildings" id="buildings">
+      {% for b in buildings %}
+      <li data-search="{{ b.search }}">
+        <div class="b-head">{% if b.url %}<a href="{{ b.url }}" target="_blank" rel="noopener noreferrer">{{ b.name }}</a>{% else %}{{ b.name }}{% endif %}<span class="b-place">{{ b.place }}</span></div>
+        <div class="b-meta">{{ b.address }} · {{ b.management }}</div>
+        <div class="b-meta">{{ b.checked }}{% if b.stale %} · <span class="warn">⚠ out of date</span>{% endif %}{% if not b.mapped %} · not on the map ({{ b.map_note|lower }}){% endif %}{% if b.units %} · {{ b.units }} apartments, from {{ b.cheapest }}{% endif %}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section>
+    <h2>Buildings by neighborhood</h2>
+    <div class="chart">{{ charts.neighborhood_counts }}</div>
+  </section>
+
+  <section>
+    <h2>Download</h2>
+    <p><a href="buildings.csv" download>Buildings (CSV)</a> · <a href="units.csv" download>Apartments (CSV)</a></p>
+  </section>
+
+  <footer>
+    <p>"Checked" means a public source was looked at on that date. It doesn't confirm a December offer,
+      the condition of the building or a commute time.</p>
+    <p>Our own ratings, notes and contacts stay private and are not on this page.</p>
+    <p><a href="pipeline/index.html">How this page is built</a> · <a href="{{ config.repo_url }}">Source code</a></p>
+  </footer>
+</main>
+<script>
+  const input = document.getElementById("filter");
+  const items = Array.from(document.querySelectorAll("#buildings li"));
+  const count = document.getElementById("count");
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let shown = 0;
+    for (const item of items) {
+      const hit = !query || item.dataset.search.includes(query);
+      item.hidden = !hit;
+      if (hit) shown += 1;
+    }
+    count.textContent = shown === items.length
+      ? `${items.length} buildings`
+      : `${shown} of ${items.length} buildings`;
+  });
+</script>
+</body>
+</html>

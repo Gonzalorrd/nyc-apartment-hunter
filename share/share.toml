@@ -1,0 +1,8 @@
+# Public share-site settings. Budget, commute limit and move-in dates come from
+# config/preferences.toml so the site and the local app always agree.
+title = "Our December apartment search"
+office_label = "55 Hudson Yards"
+# Street address of 55 Hudson Yards (https://en.wikipedia.org/wiki/55_Hudson_Yards). The
+# Census geocoder does not know the tower name and fuzzy-matches it to 55 Hudson St.
+office_address = "550 West 34th Street, New York, NY 10001"
+repo_url = "https://github.com/Gonzalorrd/nyc-apartment-hunter"

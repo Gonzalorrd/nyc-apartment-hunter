@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nyc-apartment-hunter"
+version = "0.1.0"
+description = "Private, evidence-based NYC apartment search tracker"
+requires-python = ">=3.12"
+dependencies = ["sqlalchemy>=2.0,<3", "streamlit>=1.40,<2", "pydantic>=2.10,<3", "pandas>=2.2,<3", "openpyxl>=3.1,<4"]
+
+[project.scripts]
+apartment-hunter = "apartment_hunter.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
+# Share-site pipeline (GitHub Pages); the app itself does not need these.
+site = ["chartbook==0.1.1", "doit>=0.36,<1", "plotly>=5.24,<7", "pyarrow>=15", "jinja2>=3.1,<4"]
+
+[tool.uv]
+default-groups = ["dev", "site"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/apartment_hunter"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [".uv-cache", ".uv-clean-cache", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
