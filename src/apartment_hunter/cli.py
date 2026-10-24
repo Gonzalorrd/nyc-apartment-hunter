@@ -25,6 +25,8 @@ from apartment_hunter.services import (
     stale,
     validate_database,
 )
+from apartment_hunter.streeteasy import DEFAULT_FOLDER as STREETEASY_FOLDER
+from apartment_hunter.streeteasy import import_folder
 
 
 def main() -> None:
@@ -63,6 +65,11 @@ def main() -> None:
     export.add_argument("--output", default="data/exports/apartment-search.xlsx")
     publish = sub.add_parser("publish", help="Write the allowlisted public snapshot")
     publish.add_argument("--out", default="site_data/snapshot.json")
+    streeteasy = sub.add_parser(
+        "import-streeteasy", help="Import StreetEasy result pages saved from your browser"
+    )
+    streeteasy.add_argument("folder", nargs="?", default=str(STREETEASY_FOLDER))
+    streeteasy.add_argument("--apply", action="store_true", help="Write (default: preview)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if args.db:
@@ -130,6 +137,8 @@ def main() -> None:
                     "snapshot": str(path),
                     **{k: len(data[k]) for k in ("buildings", "units", "commutes", "risks")},
                 }
+            elif args.command == "import-streeteasy":
+                result = import_folder(conn, Path(args.folder), args.apply)
             elif args.command == "refresh":
                 result = [asdict(r) for r in refresh_sources(conn)]
             elif args.command == "stale":

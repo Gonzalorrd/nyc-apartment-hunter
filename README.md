@@ -67,6 +67,22 @@ After pulling a version that changes the database schema, close the app and run
 `uv run --no-sync apartment-hunter migrate`. It backs up `data/apartments.db` to
 `data/backups/` first; the app refuses to open an old schema until then.
 
+To import a StreetEasy search, run it in your browser and save each results page
+(Ctrl+S, "Webpage, HTML only") into `data/imports/streeteasy/`. Then preview and apply:
+
+```powershell
+uv run --no-sync apartment-hunter import-streeteasy
+uv run --no-sync apartment-hunter import-streeteasy --apply
+```
+
+StreetEasy alert emails work the same way: save them as `.eml` (Gmail: ⋮ → Download message)
+or plain text into `data/imports/streeteasy/emails/`. Saved-search alerts and saved-listing
+updates are read; StreetEasy's own suggestions are ignored. A newer "Rented" or "In
+contract" notice updates an apartment already in the app.
+
+New buildings appear under "New to review"; known buildings and listings already imported
+are skipped, and dropped buildings are ignored. The app never contacts StreetEasy.
+
 `refresh` honestly reports manual research is required; it performs no web scraping.
 Database validation checks structure, not whether a listing claim is true.
 Exports are at `data/exports/apartment-search.xlsx` and do not modify the database.

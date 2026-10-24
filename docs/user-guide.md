@@ -65,6 +65,23 @@ on New when there is something new and on Already reviewed otherwise, and the
 change appears after the next `publish` and push. Newly added buildings and units
 always start in New.
 
+## Importing StreetEasy searches
+
+StreetEasy blocks automated access, so the app reads pages you save yourself. Run your
+saved search, save every results page (Ctrl+S, "Webpage, HTML only"; page 2, 3 and so on
+too) into `data/imports/streeteasy/`, then run `apartment-hunter import-streeteasy`. Check
+the preview, then repeat with `--apply`. It takes each listing's address, unit, bedrooms,
+bathrooms, size when shown, base rent and any free-month offer. Fees, the exact move-in date
+and occupancy rules stay unknown until you check the listing. Re-running is safe. The folder
+is never committed, and saved pages may contain your StreetEasy account name.
+
+Alert emails go in `data/imports/streeteasy/emails/` as `.eml` files or plain text (a `.txt`
+may start with `Subject:` and `Date:` lines). The import reads saved-search alerts and
+saved-listing updates, skips recommendation sections and sponsored ads, and keeps only the
+newest sighting of each apartment. "Rented" marks an apartment already in the app as leased,
+"In contract" marks it unavailable, and a newer price replaces the old one. Listings that
+are rented, in contract or de-listed are not added.
+
 ## Export and backups
 
 Export on demand. Each workbook is rebuilt, so repeated exports do not append

@@ -28,6 +28,12 @@ Open research gaps (from the first build):
   notes. All are "needs checking": no verified weekday commute, pest review or two-occupant
   confirmation yet. StreetEasy and some official sites return 403 to automated fetches;
   those buildings were not worked around. Notes on every building record what was found.
+- 2026-10-24: `apartment-hunter import-streeteasy` imports StreetEasy result pages the user
+  saves into `data/imports/streeteasy/` (`src/apartment_hunter/streeteasy.py`). The first page
+  added 8 buildings and 12 units. Page 2 of that search is not saved yet. 28 alert emails
+  from 2026-10-11 to 2026-10-23 (Gmail connector, read-only) added 8 more buildings and
+  15 units; rented, in-contract and de-listed listings were skipped. Neither batch is
+  pushed yet (ask first).
 - 0 risks are recorded. Before 2026-10-24 the unit cards and cost charts had only
   been checked on synthetic data. Re-check them with `scripts/phone_screenshot.mjs`
   after the first real units are published.

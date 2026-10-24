@@ -109,15 +109,18 @@ def rank_unit(
         elif not passed:
             rejected.append(label)
 
+    # Unknown fees can only add, so base rent alone over budget already fails.
+    rent_alone_over = unit["base_rent"] is not None and float(unit["base_rent"]) > config.budget
     constraint(
-        fresh_unit and cost is not None,
+        fresh_unit and (cost is not None or rent_alone_over),
         cost is not None and cost <= config.budget,
         "All-in monthly budget",
     )
     constraint(
         fresh_unit and unit["bedrooms"] is not None and unit["separate_bedroom"] is not None,
-        unit["bedrooms"] == 1 and unit["separate_bedroom"] is True,
-        "Separate one-bedroom",
+        # Two-bedrooms within budget count too (household search, 2026-10-24).
+        unit["bedrooms"] is not None and unit["bedrooms"] >= 1 and unit["separate_bedroom"] is True,
+        "Separate bedroom",
     )
     square_feet = unit["square_feet"]
     constraint(

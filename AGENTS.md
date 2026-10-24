@@ -14,6 +14,11 @@ cemeteries are scored as pros/cons, never hard rules (household decision 2026-10
 - Run: `uv run --no-sync apartment-hunter dashboard`
 - Initialize/seed/export: `uv run --no-sync apartment-hunter init` / `seed` / `export`
 - Schema upgrade (backs up first): `uv run --no-sync apartment-hunter migrate`
+- StreetEasy (blocks automated fetches; never work around it): the user saves result pages into
+  `data/imports/streeteasy/`; preview with `uv run --no-sync apartment-hunter import-streeteasy`,
+  then add `--apply`. Official sites or the landlord's RentCafe page usually work for WebFetch.
+  Alert emails (Gmail connector, read-only) are saved as text into `.../streeteasy/emails/`
+  with `Subject:`/`Date:` header lines, cut before recommendations and the footer.
 - Share site: `uv run --no-sync apartment-hunter publish`, then `uv run --no-sync doit`
   (output `share/public/`); pushing to `main` deploys via `.github/workflows/site.yml`.
 - No standalone type-check command is configured.
