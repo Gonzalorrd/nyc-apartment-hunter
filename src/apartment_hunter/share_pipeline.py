@@ -23,7 +23,9 @@ from apartment_hunter.scoring import latest_commute, rank_unit
 from apartment_hunter.services import serializable, stale
 
 EMAIL = re.compile(r"[\w.%+-]+@[\w-]+\.[\w.-]+")
-PHONE = re.compile(r"(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)")
+# A phone number is not glued to a preceding letter, digit or hyphen. That keeps listing
+# IDs such as ".../NJ002-005-5221/" from being flagged.
+PHONE = re.compile(r"(?<![\w-])(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)")
 BUILDING_STALE_DAYS = 30  # Same building freshness window as scoring.rank_unit.
 CENSUS_URL = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
 POSTAL_CITY = {"Manhattan": "New York"}  # Census matches Manhattan as "New York, NY".
@@ -219,15 +221,21 @@ UNIT_COLUMNS = [
     "monthly_cost",
     "net_effective_base_rent",
     "square_feet",
+    "kitchen_island",
     "available_date",
     "commute_minutes",
     "eligibility",
     "score",
+    "score_low",
+    "score_high",
     "completeness_percent",
+    "pros",
+    "cons",
     "reasons",
     "warnings",
     "listing_url",
     "days_since_verified",
+    "reviewed_on",
 ]
 BUILDING_COLUMNS = [
     "building_id",
@@ -244,10 +252,13 @@ BUILDING_COLUMNS = [
     "verified_on",
     "days_since_verified",
     "stale",
+    "next_to_elevated_train",
+    "reviewed_on",
     "commute_minutes",
     "units_published",
     "units_eligible",
     "cheapest_monthly_cost",
+    "best_score",
     "map_latitude",
     "map_longitude",
     "map_source",
@@ -270,6 +281,7 @@ def transform(
     ranked.sort(key=lambda r: (ELIGIBILITY_ORDER[r["eligibility"]], -r["score"], r["unit_id"]))
     unit_building = {u["id"]: u["building_id"] for u in clean["units"]}
     unit_verified = {u["id"]: u["verified_on"] for u in clean["units"]}
+    unit_reviewed = {u["id"]: u["reviewed_on"] for u in clean["units"]}
     units = pd.DataFrame(
         [
             {
@@ -284,17 +296,23 @@ def transform(
                 "monthly_cost": r["gross_monthly_cost"],
                 "net_effective_base_rent": r["net_effective_base_rent"],
                 "square_feet": r["square_feet"],
+                "kitchen_island": r["kitchen_island"],
                 "available_date": date.fromisoformat(r["available_date"])
                 if r["available_date"]
                 else None,  # rank_unit returns JSON-ready strings.
                 "commute_minutes": r["commute_minutes"],
                 "eligibility": r["eligibility"],
                 "score": r["score"],
+                "score_low": r["score_low"],
+                "score_high": r["score_high"],
                 "completeness_percent": r["completeness_percent"],
+                "pros": "; ".join(r["pros"]),
+                "cons": "; ".join(r["cons"]),
                 "reasons": "; ".join(r["reasons"]),
                 "warnings": "; ".join(r["warnings"]),
                 "listing_url": r["listing_url"],
                 "days_since_verified": days_since(unit_verified[r["unit_id"]], as_of),
+                "reviewed_on": unit_reviewed[r["unit_id"]],
             }
             for r in ranked
         ],
@@ -307,7 +325,13 @@ def transform(
         ],
         columns=BUILDING_COLUMNS,
     )
-    numeric = ["commute_minutes", "cheapest_monthly_cost", "map_latitude", "map_longitude"]
+    numeric = [
+        "commute_minutes",
+        "cheapest_monthly_cost",
+        "best_score",
+        "map_latitude",
+        "map_longitude",
+    ]
     buildings[numeric] = buildings[numeric].astype(float)
     money = ["base_rent", "mandatory_fees", "monthly_cost", "net_effective_base_rent"]
     units[[*money, "square_feet", "commute_minutes"]] = units[
@@ -330,6 +354,9 @@ def transform(
         "as_of": as_of.isoformat(),
         "budget": config.budget,
         "max_commute": config.max_commute,
+        "target_square_feet": config.target_square_feet,
+        "buildings_new": int(buildings["reviewed_on"].isna().sum()),
+        "units_new": int(units["reviewed_on"].isna().sum()),
         "destination": config.destination,
         "buildings": len(buildings),
         "buildings_mapped": int(buildings["map_latitude"].notna().sum()),
@@ -358,7 +385,8 @@ def building_row(
     as_of: date,
 ) -> dict:
     own = units[units["building_id"] == building["id"]]
-    costs = own[own["eligibility"] != "excluded"]["monthly_cost"].dropna()
+    candidates = own[own["eligibility"] != "excluded"]
+    costs = candidates["monthly_cost"].dropna()
     commute = latest_commute(building["id"], commutes, config, as_of)
     return {
         "building_id": building["id"],
@@ -376,10 +404,13 @@ def building_row(
         "days_since_verified": days_since(building["verified_on"], as_of),
         "stale": stale(building, BUILDING_STALE_DAYS, as_of)
         or building["verification"] == "unverified",
+        "next_to_elevated_train": building["next_to_elevated_train"],
+        "reviewed_on": building["reviewed_on"],
         "commute_minutes": commute["door_to_door_minutes"] if commute else None,
         "units_published": len(own),
         "units_eligible": int((own["eligibility"] == "eligible").sum()),
         "cheapest_monthly_cost": float(costs.min()) if len(costs) else None,
+        "best_score": float(candidates["score"].max()) if len(candidates) else None,
         **point,
     }
 

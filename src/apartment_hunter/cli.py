@@ -7,7 +7,8 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from apartment_hunter.db import database
+from apartment_hunter.config import preferences
+from apartment_hunter.db import SCHEMA_VERSION, database, migrate
 from apartment_hunter.demo import load_demo
 from apartment_hunter.exporting import export_workbook
 from apartment_hunter.providers import refresh_sources
@@ -32,6 +33,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     for name in (
         "init",
+        "migrate",
         "validate",
         "rank",
         "refresh",
@@ -83,10 +85,13 @@ def main() -> None:
         )
         return
     try:
+        if args.command == "migrate":  # Before `database()`, which refuses old schemas.
+            print(json.dumps(migrate(args.db), indent=2))
+            return
         with database(args.db) as conn:
             result = None
             if args.command == "init":
-                result = "Database initialized (schema 1)"
+                result = f"Database initialized (schema {SCHEMA_VERSION})"
             elif args.command == "seed":
                 result = {
                     "inserted": seed(conn, json.loads(Path(args.file).read_text(encoding="utf-8")))
@@ -119,7 +124,7 @@ def main() -> None:
             elif args.command == "export":
                 result = str(export_workbook(conn, args.output).resolve())
             elif args.command == "publish":
-                path = write_snapshot(conn, args.out)
+                path = write_snapshot(conn, args.out, preferences().shared_units_per_building)
                 data = json.loads(path.read_text(encoding="utf-8"))
                 result = {
                     "snapshot": str(path),

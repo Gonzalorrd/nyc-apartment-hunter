@@ -43,6 +43,9 @@
   .price span { font-size: 0.85rem; font-weight: 400; color: var(--muted); margin-left: 4px; }
   .facts { margin: 4px 0; padding-left: 18px; color: var(--ink-2); font-size: 0.9rem; }
   .reasons { margin: 0; font-size: 0.85rem; color: var(--ink-2); }
+  .score { font-size: 1rem; color: var(--ink-2); }
+  .score b { font-size: 1.25rem; color: var(--ink); }
+  .pc { list-style: none; margin: 4px 0; padding: 0; font-size: 0.9rem; color: var(--ink-2); }
   .filter { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--ink-2); }
   .filter input { font: inherit; font-size: 1rem; padding: 10px 12px; border: 1px solid #c3c2b7; border-radius: 10px; background: var(--surface); }
   .buildings { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
@@ -51,15 +54,33 @@
   .b-place { font-weight: 400; color: var(--muted); font-size: 0.9rem; margin-left: 4px; }
   .b-meta { color: var(--ink-2); font-size: 0.88rem; }
   .warn { color: var(--warn-ink); }
+  .tabs { display: flex; gap: 8px; margin: 10px 0 8px; flex-wrap: wrap; }
+  .tab { font: inherit; font-size: 0.95rem; min-height: 44px; padding: 8px 14px; border-radius: 999px;
+    border: 1px solid #c3c2b7; background: var(--surface); color: var(--ink-2); cursor: pointer; }
+  .tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+  .tab .n { font-variant-numeric: tabular-nums; margin-left: 4px; }
   footer { margin-top: 36px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--hairline); padding-top: 12px; }
 </style>
 </head>
 <body>
+{% macro tablist(list, label) %}
+<div class="tabs" role="tablist" aria-label="{{ label }}">
+  {% for t in tabs[list] %}
+  <button type="button" class="tab" role="tab" data-list="{{ list }}" data-group="{{ t.key }}" aria-selected="{{ 'true' if t.active else 'false' }}">{{ t.label }}<span class="n">{{ t.count }}</span></button>
+  {% endfor %}
+</div>
+{% endmacro %}
+{% macro empty_states(list) %}
+{% for t in tabs[list] %}<p class="empty" data-empty="{{ list }}" data-group="{{ t.key }}"{% if not (t.active and t.count == 0) %} hidden{% endif %}>{{ t.empty }}</p>{% endfor %}
+{% endmacro %}
+{% macro hidden_unless(list, item_group) %}{% for t in tabs[list] if t.active and t.key != item_group %} hidden{% endfor %}{% endmacro %}
 <main class="page">
   <header>
     <h1>{{ config.title }}</h1>
     <p class="lede">A one-bedroom for two, moving in December. Budget {{ budget }} a month including
-      mandatory fees, and a commute of {{ summary.max_commute|round|int }} minutes or less to {{ config.office_label }}.</p>
+      mandatory fees, and a commute of {{ summary.max_commute|round|int }} minutes or less to {{ config.office_label }}.
+      Extra points for a short commute, {{ target_size }}+ sq ft, good finishes, a kitchen island and not being
+      right next to an elevated train.</p>
     <p class="meta">Updated {{ as_of }}</p>
   </header>
 
@@ -84,24 +105,31 @@
   {% if cards %}
   <section>
     <h2>Apartments</h2>
-    <p class="sub">Best matches first. "Needs checking" means something is still unknown or out of date,
-      not that it fails.</p>
+    <p class="sub">Best scores first. "Needs checking" means something is still unknown or out of date,
+      not that it fails. Scores are out of 100. When a listing leaves something out, it counts as
+      average and the range shows how high or low the score could go.</p>
+    {{ tablist("units", "Apartments") }}
     <div class="cards">
       {% for c in cards %}
-      <article class="card">
+      <article class="card" data-item="units" data-group="{{ c.group }}"{{ hidden_unless("units", c.group) }}>
         <div class="badge"><span class="dot" style="background: {{ c.status.color }}"></span>{{ c.status.icon }} {{ c.status.label }}</div>
         <h3>{{ c.title }}</h3>
         {% if c.neighborhood %}<div class="sub">{{ c.neighborhood }}</div>{% endif %}
         {% if c.cost %}<div class="price">{{ c.cost }}<span>a month, all-in</span></div>
         {% else %}<div class="price unknown">Monthly cost not known yet</div>{% endif %}
+        <div class="score">Score <b>{{ c.score }}</b>/100{% if c.range %} · range {{ c.range }}{% endif %}</div>
+        <div class="sub">{{ c.basis }}</div>
+        {% if c.pros or c.cons %}<ul class="pc">{% for p in c.pros %}<li>✓ {{ p }}</li>{% endfor %}{% for n in c.cons %}<li>✕ {{ n }}</li>{% endfor %}</ul>{% endif %}
         <ul class="facts">
-          <li>{{ c.breakdown }}</li><li>{{ c.commute }}</li><li>{{ c.available }}</li><li>{{ c.checked }}</li>
+          <li>{{ c.breakdown }}</li>{% if c.size_unknown %}<li>Size unknown</li>{% endif %}
+          <li>{{ c.commute }}</li><li>{{ c.available }}</li><li>{{ c.checked }}</li>
         </ul>
         {% if c.reasons %}<p class="reasons">Ruled out because of: {{ c.reasons }}</p>{% endif %}
         {% if c.url %}<a href="{{ c.url }}" target="_blank" rel="noopener noreferrer">Open listing</a>{% endif %}
       </article>
       {% endfor %}
     </div>
+    {{ empty_states("units") }}
   </section>
   {% endif %}
 
@@ -123,19 +151,21 @@
 
   <section>
     <h2>All buildings</h2>
+    {{ tablist("buildings", "Buildings") }}
     <label class="filter"><span>Search</span>
       <input id="filter" type="search" placeholder="Name, neighborhood or manager" autocomplete="off">
     </label>
-    <p class="sub" id="count">{{ buildings|length }} buildings</p>
+    <p class="sub" id="count" aria-live="polite"></p>
     <ul class="buildings" id="buildings">
       {% for b in buildings %}
-      <li data-search="{{ b.search }}">
+      <li data-item="buildings" data-group="{{ b.group }}" data-search="{{ b.search }}"{{ hidden_unless("buildings", b.group) }}>
         <div class="b-head">{% if b.url %}<a href="{{ b.url }}" target="_blank" rel="noopener noreferrer">{{ b.name }}</a>{% else %}{{ b.name }}{% endif %}<span class="b-place">{{ b.place }}</span></div>
         <div class="b-meta">{{ b.address }} · {{ b.management }}</div>
-        <div class="b-meta">{{ b.checked }}{% if b.stale %} · <span class="warn">⚠ out of date</span>{% endif %}{% if not b.mapped %} · not on the map ({{ b.map_note|lower }}){% endif %}{% if b.units %} · {{ b.units }} apartments, from {{ b.cheapest }}{% endif %}</div>
+        <div class="b-meta">{{ b.checked }}{% if b.stale %} · <span class="warn">⚠ out of date</span>{% endif %}{% if b.train %} · <span class="warn">⚠ next to an elevated train</span>{% endif %}{% if not b.mapped %} · not on the map ({{ b.map_note|lower }}){% endif %}{% if b.units %} · {{ b.units }} apartments, from {{ b.cheapest }}{% endif %}{% if b.best_score %} · best score {{ b.best_score }}{% endif %}</div>
       </li>
       {% endfor %}
     </ul>
+    {{ empty_states("buildings") }}
   </section>
 
   <section>
@@ -151,26 +181,48 @@
   <footer>
     <p>"Checked" means a public source was looked at on that date. It doesn't confirm a December offer,
       the condition of the building or a commute time.</p>
-    <p>Our own ratings, notes and contacts stay private and are not on this page.</p>
+    <p>Scores use only the facts and ratings shown here. Our personal opinions of each apartment,
+      our notes and our contacts stay private and are not on this page.</p>
     <p><a href="pipeline/index.html">How this page is built</a> · <a href="{{ config.repo_url }}">Source code</a></p>
   </footer>
 </main>
 <script>
+  // Tabs split each list into "new to review" and "already reviewed"; search filters
+  // the buildings within the selected tab.
   const input = document.getElementById("filter");
-  const items = Array.from(document.querySelectorAll("#buildings li"));
   const count = document.getElementById("count");
-  input.addEventListener("input", () => {
-    const query = input.value.trim().toLowerCase();
-    let shown = 0;
-    for (const item of items) {
-      const hit = !query || item.dataset.search.includes(query);
+  const active = {};
+  function show(list) {
+    const group = active[list];
+    const query = list === "buildings" ? input.value.trim().toLowerCase() : "";
+    let total = 0, shown = 0;
+    for (const item of document.querySelectorAll(`[data-item="${list}"]`)) {
+      const inTab = item.dataset.group === group;
+      const hit = inTab && (!query || item.dataset.search.includes(query));
       item.hidden = !hit;
-      if (hit) shown += 1;
+      total += inTab;
+      shown += hit;
     }
-    count.textContent = shown === items.length
-      ? `${items.length} buildings`
-      : `${shown} of ${items.length} buildings`;
-  });
+    for (const tab of document.querySelectorAll(`.tab[data-list="${list}"]`)) {
+      tab.setAttribute("aria-selected", String(tab.dataset.group === group));
+    }
+    for (const note of document.querySelectorAll(`[data-empty="${list}"]`)) {
+      note.hidden = !(note.dataset.group === group && total === 0);
+    }
+    if (list === "buildings") {
+      const noun = total === 1 ? "building" : "buildings";
+      count.textContent = shown === total ? `${total} ${noun}` : `${shown} of ${total} ${noun}`;
+    }
+  }
+  for (const tab of document.querySelectorAll(".tab")) {
+    if (tab.getAttribute("aria-selected") === "true") active[tab.dataset.list] = tab.dataset.group;
+    tab.addEventListener("click", () => {
+      active[tab.dataset.list] = tab.dataset.group;
+      show(tab.dataset.list);
+    });
+  }
+  input.addEventListener("input", () => show("buildings"));
+  Object.keys(active).forEach(show);
 </script>
 </body>
 </html>

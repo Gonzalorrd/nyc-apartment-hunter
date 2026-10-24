@@ -11,6 +11,7 @@ from apartment_hunter.publishing import snapshot
 from apartment_hunter.scoring import rank_all
 from apartment_hunter.services import save
 from apartment_hunter.share_pipeline import (
+    PHONE,
     enrich,
     geocode,
     snapshot_changes,
@@ -190,3 +191,30 @@ def test_snapshot_changes_reports_additions_removals_and_prices(demo_snapshot):
             "mandatory_fees_after": unit["mandatory_fees"],
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "212-555-0100",
+        "Call Ana at 212-555-0100",
+        "(212) 555-0100",
+        "+1 212 555 0100",
+        "1-212-555-0100",
+        "tel:212.555.0100",
+    ],
+)
+def test_phone_numbers_are_caught(text):
+    assert PHONE.search(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "https://www.avaloncommunities.com/nj/avalon-cove/apartment/NJ002-NJ002-005-5221/",
+        "https://www.journalsquared.com/availabilities/unit/?unitID=10515428&unit-name=5101",
+        "Unit 005-5221",
+    ],
+)
+def test_listing_ids_are_not_phone_numbers(text):
+    assert not PHONE.search(text)

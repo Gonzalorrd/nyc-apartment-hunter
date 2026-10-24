@@ -5,6 +5,14 @@ December 1-15), no more than $4,000 in base rent plus mandatory recurring fees,
 and approximately 40 minutes maximum to 55 Hudson Yards. Variable utility estimates
 are displayed separately; add any mandatory fixed charges to fees.
 
+Preferences, not requirements (household review 2026-10-23, relaxed 2026-10-24): 600+
+square feet, good finishes, a kitchen island, and not being next to an elevated train.
+Priority order: distance, then space, then finishes. These raise or lower the score and
+appear as pros and cons. They never rule an apartment out. A cemetery nearby is shown as
+a con only and is not scored. Record `next_to_elevated_train` once per building from a
+map: true if the building fronts or abuts elevated subway, PATH or rail tracks. A
+building one block away is false. When unsure, leave it unknown.
+
 ## Practical routine
 
 On October 19, start with building identity, neighborhood fit and leasing questions.
@@ -54,31 +62,46 @@ automatically exclude the property. A current high-confidence serious unresolved
 pest finding excludes it. Older/unverified serious unresolved findings keep it
 pending research until resolved; they do not silently expire into a clean result.
 
-For Vida52, treat the reported cemetery concern as an open question about exact
-surroundings and unit views. Record both occupants' opinions independently. A
-deal breaker from either occupant excludes a unit from the joint shortlist.
+Cemeteries are no longer a rule. On 2026-10-24 the household decided a nearby cemetery
+does not exclude a building (Vida52 included). Recording `cemetery_concern = yes` only
+adds a "Cemetery nearby" con. Record both occupants' opinions independently. A deal
+breaker from either occupant excludes a unit from the joint shortlist.
 
 ## Scoring
 
 These are configurable preference heuristics, not statistically estimated quality
-or a prediction of satisfaction. Default weights: cost 20, commute 20, condition 20,
-quality 15, amenities 10, neighborhood 10 and management 5.
+or a prediction of satisfaction. Default weights follow the household priorities
+(distance, space, finishes): commute 25, space 20, finishes 15, cost 10, quiet 10,
+island 5, condition 5, amenities 5 and neighborhood 5; quality and management are 0 by
+default. Cost stays modest because the $4,000 ceiling is already a hard constraint.
+The research-heavy manual factors weigh little because most listings won't have them.
 
 Cost component = clamp(100 - 50 * gross monthly cost / budget, 0, 100).
 Commute component = clamp(100 * preferred commute / observed minutes, 0, 100).
+Space component, piecewise linear: 0 at 400 sq ft, 75 at 600, 100 at 800 or more
+(`small_`, `target_` and `preferred_square_feet`). It drops steeply below 600, so
+reaching 600 is a clear plus. Example: 500 sq ft = 37.5, 700 sq ft = 87.5.
+Quiet component = 100 if the building is not next to an elevated train, 0 if it is.
+Island component = 100 with a kitchen island, 0 without. Don't also credit the island
+in the finishes or quality rating.
 Other components are explicit 0-100 human assessments supported by notes. Suggested
 anchors: 0 unacceptable, 25 weak, 50 acceptable, 75 strong, 100 exceptional. Judge
-quality using layout, size (600+ square feet preferred), finishes, laundry, light
-and noise; document trade-offs rather than pretending a fixed amenity count proves quality.
+finishes from renovated kitchen and bath, appliances and floors. Judge quality from
+layout, laundry, light and noise. Document trade-offs rather than pretending a fixed
+amenity count proves quality.
 
-Score = weighted sum of known component scores / all configured weights. Unknown
-components contribute zero evidence points and remain labeled unscored. We do not
-renormalize around missing data. Completeness = share of configured weight with known
-components. Never interpret a low-completeness score as an estimate of poor quality.
+Listings report different facts, so every score is a range. Low = known points / total
+weight (unknown counts as 0). High = the same with unknown counted as 100. The score
+used for ranking is the midpoint, where an unknown fact counts as 50 ("acceptable").
+Completeness = share of the weight that is known, and the range is 100 − completeness
+points wide. A listing that leaves facts out gets a wide range, not a low score. A
+narrow range means the score rests on evidence. Pros and cons list only known facts.
 
 Freshness: listings/commutes seven days by default, building condition evidence 30
 days. Record-level verification must have evidence and a date. Stale or unknown hard
 constraints result in `needs_verification`; supported failures result in `excluded`.
+Hard constraints: all-in budget, separate one-bedroom, two occupants allowed,
+currently listed, December move-in, commute limit and serious unresolved pests.
 Only `eligible` rows satisfy every recorded hard constraint. Rank eligible first,
 then pending, then excluded; numeric scores cannot override exclusion.
 

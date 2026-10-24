@@ -2,6 +2,7 @@
 
 import json
 from datetime import timedelta
+from typing import get_args
 from urllib.parse import urlencode
 
 import pandas as pd
@@ -11,7 +12,7 @@ from apartment_hunter.config import FACTORS, preferences, today
 from apartment_hunter.db import database, scalar_schema
 from apartment_hunter.exporting import csv_bytes, workbook_bytes
 from apartment_hunter.outreach import inquiry
-from apartment_hunter.schemas import CONTACT_STATUSES, SCHEMAS
+from apartment_hunter.schemas import CONTACT_STATUSES, SCHEMAS, HouseholdStatus
 from apartment_hunter.scoring import rank_all
 from apartment_hunter.services import (
     followups,
@@ -133,6 +134,106 @@ def edit_form(conn) -> None:
             st.error(str(exc))
 
 
+BUILDING_REVIEW_COLUMNS = (
+    "id",
+    "name",
+    "neighborhood",
+    "municipality",
+    "household_status",
+    "household_notes",
+    "reviewed_on",
+    "next_to_elevated_train",
+    "website",
+    "source_url",
+)
+UNIT_REVIEW_COLUMNS = (
+    "unit_id",
+    "building",
+    "unit",
+    "eligibility",
+    "gross_monthly_cost",
+    "square_feet",
+    "kitchen_island",
+    "commute_minutes",
+    "score",
+    "score_low",
+    "score_high",
+    "pros",
+    "cons",
+    "reasons",
+    "listing_url",
+)
+
+
+def mark_reviewed(key: str) -> None:
+    """Form callback. It runs before the rerun, in its own transaction, so the page then
+    redraws with the moved items."""
+    chosen = st.session_state.get(key) or []
+    try:
+        with database() as conn:
+            for entity, record_id in chosen:
+                record = next(r for r in rows(conn, entity) if r["id"] == record_id)
+                payload = {k: record[k] for k in SCHEMAS[entity].model_fields}
+                save(
+                    conn, entity, {**payload, "reviewed_on": today()}, record_id, record["revision"]
+                )
+        st.session_state["review_message"] = ("success", f"Marked {len(chosen)} as reviewed.")
+    except Exception as exc:
+        st.session_state["review_message"] = ("error", str(exc))
+
+
+def review_page(buildings: list[dict], units: list[dict], ranked: list[dict]) -> None:
+    """New means not reviewed together yet. Dropped buildings and their apartments never
+    count as new, because deciding to drop them was a review."""
+    if message := st.session_state.pop("review_message", None):
+        getattr(st, message[0])(message[1])
+    household = list(get_args(HouseholdStatus))
+    dropped = {b["id"] for b in buildings if b["household_status"] == "dropped"}
+    unit_info = {u["id"]: u for u in units}
+    new_buildings = [b for b in buildings if b["reviewed_on"] is None and b["id"] not in dropped]
+    seen_buildings = sorted(
+        (b for b in buildings if b not in new_buildings),
+        key=lambda b: (household.index(b["household_status"]), b["id"]),
+    )
+    new_units = [
+        r
+        for r in ranked
+        if unit_info[r["unit_id"]]["reviewed_on"] is None
+        and unit_info[r["unit_id"]]["building_id"] not in dropped
+    ]
+    seen_units = [r for r in ranked if r not in new_units]
+    new_tab, seen_tab = st.tabs(
+        [
+            f"New ({len(new_buildings) + len(new_units)})",
+            f"Already reviewed ({len(seen_buildings) + len(seen_units)})",
+        ]
+    )
+    for tab, group_buildings, group_units, empty in (
+        (new_tab, new_buildings, new_units, "Nothing new since the last review."),
+        (seen_tab, seen_buildings, seen_units, "Nothing reviewed yet."),
+    ):
+        with tab:
+            if not group_buildings and not group_units:
+                st.info(empty)
+                continue
+            st.subheader(f"Buildings ({len(group_buildings)})")
+            table([{k: b[k] for k in BUILDING_REVIEW_COLUMNS} for b in group_buildings])
+            st.subheader(f"Apartments ({len(group_units)})")
+            table([{k: r[k] for k in UNIT_REVIEW_COLUMNS} for r in group_units])
+    options = {("buildings", b["id"]): f"Building · {b['name']}" for b in new_buildings}
+    options.update(
+        {("units", r["unit_id"]): f"Apartment · {r['building']} · {r['unit']}" for r in new_units}
+    )
+    if options:
+        with new_tab, st.form("mark_reviewed"):
+            st.multiselect(
+                "Reviewed together", list(options), format_func=options.get, key="reviewed"
+            )
+            st.form_submit_button(
+                "Mark as reviewed today", on_click=mark_reviewed, args=("reviewed",)
+            )
+
+
 def main() -> None:
     config = preferences()
     st.sidebar.title("December in NYC")
@@ -141,6 +242,7 @@ def main() -> None:
         "Workspace",
         [
             "Overview",
+            "Review",
             "Buildings",
             "Property explorer",
             "Compare",
@@ -153,11 +255,22 @@ def main() -> None:
     )
     scenario = st.sidebar.selectbox(
         "Ranking scenario",
-        ["Overall", "Value", "Commute", "Building quality", "Amenities", "Both occupants"],
+        [
+            "Overall",
+            "Value",
+            "Commute",
+            "Space",
+            "Finishes",
+            "Building quality",
+            "Amenities",
+            "Both occupants",
+        ],
     )
     scenario_factor = {
         "Value": "cost",
         "Commute": "commute",
+        "Space": "space",
+        "Finishes": "finishes",
         "Building quality": "condition",
         "Amenities": "amenities",
     }
@@ -200,12 +313,13 @@ def main() -> None:
                 )
             )
         if page == "Overview":
+            active = [b for b in buildings if b["household_status"] != "dropped"]
             metrics = st.columns(4)
             for col, label, value in zip(
                 metrics,
                 ("Building leads", "Listed units", "Eligible", "Due follow-ups"),
                 (
-                    len(buildings),
+                    len(active),
                     sum(u["status"] == "listed" for u in units),
                     sum(r["eligibility"] == "eligible" for r in ranked),
                     len(followups(conn)),
@@ -250,7 +364,7 @@ def main() -> None:
                         ),
                         "Latest price reduced": reductions,
                         "Buildings needing research": sum(
-                            b["pest_status"] == "unknown" or stale(b, 30) for b in buildings
+                            b["pest_status"] == "unknown" or stale(b, 30) for b in active
                         ),
                         "Awaiting response": sum(
                             c["status"] == "awaiting_response" for c in rows(conn, "contacts")
@@ -260,14 +374,24 @@ def main() -> None:
             )
             st.subheader("Next research steps")
             table(research_queue(conn)[:12])
+        elif page == "Review":
+            review_page(buildings, units, ranked)
         elif page == "Buildings":
             search = st.text_input("Search building or neighborhood")
+            household = list(get_args(HouseholdStatus))
+            shown = st.multiselect(
+                "Household status", household, default=[s for s in household if s != "dropped"]
+            )
             table(
-                [
-                    b
-                    for b in buildings
-                    if search.casefold() in f"{b['name']} {b['neighborhood']}".casefold()
-                ]
+                sorted(
+                    (
+                        b
+                        for b in buildings
+                        if b["household_status"] in shown
+                        and search.casefold() in f"{b['name']} {b['neighborhood']}".casefold()
+                    ),
+                    key=lambda b: (household.index(b["household_status"]), b["id"]),
+                )
             )
             st.caption(
                 "Open Add / edit to record an address, leasing website, amenities, "
@@ -284,6 +408,7 @@ def main() -> None:
                 "Maximum known monthly cost", value=float(config.budget), min_value=0.0
             )
             include_unknown = st.checkbox("Include unknown monthly costs", value=True)
+            island_only = st.checkbox("Kitchen island only")
             filtered = [
                 r
                 for r in ranked
@@ -294,6 +419,7 @@ def main() -> None:
                     (r["gross_monthly_cost"] is None and include_unknown)
                     or (r["gross_monthly_cost"] is not None and r["gross_monthly_cost"] <= max_rent)
                 )
+                and (not island_only or r["kitchen_island"] is True)
             ]
             table(filtered)
             st.caption(

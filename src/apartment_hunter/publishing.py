@@ -1,13 +1,16 @@
 """Public snapshot for the share site. Allowlist only: unlisted fields never leave the laptop.
 
 The snapshot is committed to a public repository, so contacts, interactions, tours,
-tasks, evaluations, audit history and free-text notes are never written. Evidence notes
-are replaced by a marker so verified records still satisfy the schema contract.
+tasks, evaluations, household triage, audit history and free-text notes are never written.
+Evidence notes are replaced by a marker so verified records still satisfy the schema
+contract. Buildings the household dropped are left out with their units, commutes and risks.
+`publish` can also limit each building to the apartments priced closest to the budget.
 """
 
 import json
 from pathlib import Path
 
+from apartment_hunter.config import preferences
 from apartment_hunter.services import rows, serializable
 
 SNAPSHOT_VERSION = 1
@@ -37,10 +40,12 @@ PUBLIC_FIELDS: dict[str, tuple[str, ...]] = {
         "description",
         "pest_status",
         "cemetery_concern",
+        "next_to_elevated_train",
         "condition_score",
         "amenities_score",
         "neighborhood_score",
         "management_score",
+        "reviewed_on",
     ),
     "units": (
         "id",
@@ -73,7 +78,10 @@ PUBLIC_FIELDS: dict[str, tuple[str, ...]] = {
         "laundry",
         "outdoor_space",
         "exposure",
+        "kitchen_island",
+        "finishes_score",
         "quality_score",
+        "reviewed_on",
     ),
     "commutes": (
         "id",
@@ -115,19 +123,45 @@ def public_record(entity: str, record: dict) -> dict:
     return out
 
 
-def snapshot(conn) -> dict:
-    """Deterministic: identical database content yields identical output."""
+def closest_to_budget(units: list[dict], budget: float, per_building: int) -> list[dict]:
+    """Per building, the `per_building` units priced closest to the budget without going
+    over. Over-budget units come next and unpriced ones last. Price = base rent (else the
+    advertised rent) plus known mandatory fees."""
+
+    def key(unit):
+        rent = unit["base_rent"] if unit["base_rent"] is not None else unit["advertised_rent"]
+        if rent is None:
+            return (2, 0, unit["id"])
+        cost = float(rent) + float(unit["mandatory_fees"] or 0)
+        return (int(cost > budget), abs(budget - cost), unit["id"])
+
+    chosen = []
+    for building_id in sorted({u["building_id"] for u in units}):
+        own = sorted((u for u in units if u["building_id"] == building_id), key=key)
+        chosen.extend(own[:per_building])
+    return chosen
+
+
+def snapshot(conn, per_building: int | None = None) -> dict:
+    """Deterministic: identical database content yields identical output. `per_building`
+    (None or 0 = all) keeps only the apartments priced closest to the budget."""
     deal_breakers = {e["unit_id"] for e in rows(conn, "evaluations") if e["deal_breaker"]}
+    buildings = [b for b in rows(conn, "buildings") if b["household_status"] != "dropped"]
+    kept = {b["id"] for b in buildings}
     units = [
         u
         for u in rows(conn, "units")
-        if u["id"] not in deal_breakers and u["status"] not in WITHDRAWN_STATUSES
+        if u["building_id"] in kept
+        and u["id"] not in deal_breakers
+        and u["status"] not in WITHDRAWN_STATUSES
     ]
+    if per_building:
+        units = closest_to_budget(units, preferences().budget, per_building)
     selected = {
-        "buildings": rows(conn, "buildings"),
+        "buildings": buildings,
         "units": units,
-        "commutes": rows(conn, "commutes"),
-        "risks": rows(conn, "risks"),
+        "commutes": [c for c in rows(conn, "commutes") if c["building_id"] in kept],
+        "risks": [r for r in rows(conn, "risks") if r["building_id"] in kept],
     }
     published = {
         entity: [public_record(entity, r) for r in sorted(records, key=lambda r: r["id"])]
@@ -143,9 +177,9 @@ def snapshot(conn) -> dict:
     )
 
 
-def write_snapshot(conn, path: str | Path) -> Path:
+def write_snapshot(conn, path: str | Path, per_building: int | None = None) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(snapshot(conn), indent=2, ensure_ascii=False) + "\n"
+    text = json.dumps(snapshot(conn, per_building), indent=2, ensure_ascii=False) + "\n"
     path.write_text(text, encoding="utf-8", newline="\n")
     return path

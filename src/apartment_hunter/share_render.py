@@ -284,9 +284,41 @@ def figures(tables: dict[str, pd.DataFrame], summary: dict) -> dict[str, go.Figu
     }
 
 
+def group(reviewed_on) -> str:
+    """`new` until the household has reviewed it together (see the dashboard Review page)."""
+    return "new" if pd.isna(reviewed_on) else "seen"
+
+
+def flag(value) -> bool | None:
+    """Parquet returns a nullable bool column as objects or numpy bools; normalize both."""
+    return None if pd.isna(value) else bool(value)
+
+
+def tabs(frame: pd.DataFrame, noun: str) -> list[dict]:
+    """New first. Opens on New when it has items, otherwise on Already reviewed."""
+    new = int(frame["reviewed_on"].isna().sum()) if len(frame) else 0
+    return [
+        {
+            "key": "new",
+            "label": "New to review",
+            "count": new,
+            "active": new > 0,
+            "empty": f"No new {noun} since the last review.",
+        },
+        {
+            "key": "seen",
+            "label": "Already reviewed",
+            "count": len(frame) - new,
+            "active": new == 0,
+            "empty": f"No {noun} reviewed yet.",
+        },
+    ]
+
+
 def unit_cards(units: pd.DataFrame) -> list[dict]:
     return [
         {
+            "group": group(u.reviewed_on),
             "title": f"{u.building} · unit {u.unit}",
             "neighborhood": u.neighborhood or "",
             "status": ELIGIBILITY[u.eligibility],
@@ -294,12 +326,22 @@ def unit_cards(units: pd.DataFrame) -> list[dict]:
             "breakdown": f"{money(u.base_rent)} rent + {money(u.mandatory_fees)} fees"
             if present(u.monthly_cost)
             else "Rent or mandatory fees still unknown",
+            "size_unknown": not present(u.square_feet),  # Known sizes appear in pros/cons.
             "commute": f"{u.commute_minutes:.0f} min to the office"
             if present(u.commute_minutes)
             else "Commute not verified yet",
             "available": f"Available {u.available_date:%b} {u.available_date.day}"
             if isinstance(u.available_date, date)
             else "Move-in date unknown",
+            "score": f"{u.score:.0f}",
+            "range": f"{u.score_low:.0f}–{u.score_high:.0f}"
+            if round(u.score_low) != round(u.score_high)
+            else None,
+            "basis": "Every scored fact is known"
+            if u.completeness_percent >= 100
+            else f"{u.completeness_percent:.0f}% of the score is known; the rest counts as average",
+            "pros": [p for p in u.pros.split("; ") if p],
+            "cons": [c for c in u.cons.split("; ") if c],
             "reasons": u.reasons,
             "checked": checked(u.days_since_verified),
             "url": u.listing_url,
@@ -314,6 +356,8 @@ def building_rows(buildings: pd.DataFrame) -> list[dict]:
         place = ", ".join(p for p in (b.neighborhood, b.municipality, b.state) if p)
         rows.append(
             {
+                "group": group(b.reviewed_on),
+                "train": flag(b.next_to_elevated_train) is True,
                 "name": b.name,
                 "place": place,
                 "address": b.address or "No exact address yet",
@@ -324,6 +368,7 @@ def building_rows(buildings: pd.DataFrame) -> list[dict]:
                 "map_note": b.map_note,
                 "units": int(b.units_published),
                 "cheapest": money(b.cheapest_monthly_cost) if b.units_published else None,
+                "best_score": f"{b.best_score:.0f}" if present(b.best_score) else None,
                 "url": b.listing_url or b.website or b.source_url,
                 "search": f"{b.name} {place} {b.management_company or ''}".casefold(),
             }
@@ -334,6 +379,10 @@ def building_rows(buildings: pd.DataFrame) -> list[dict]:
 def kpis(summary: dict) -> list[dict]:
     return [
         {"label": "Buildings researched", "value": f"{summary['buildings']:,}"},
+        {
+            "label": "New to review",
+            "value": f"{summary['buildings_new'] + summary['units_new']:,}",
+        },
         {"label": "On the map", "value": f"{summary['buildings_mapped']:,}"},
         {"label": "Apartments listed", "value": f"{summary['units']:,}"},
         {"label": "Fit every requirement", "value": f"{summary['units_eligible']:,}"},
@@ -389,6 +438,11 @@ def step_render(data_dir: Path, output_dir: Path, public_dir: Path, share_dir: P
         kpis=kpis(summary),
         cards=unit_cards(tables["units"]),
         buildings=building_rows(tables["buildings"]),
+        tabs={
+            "buildings": tabs(tables["buildings"], "buildings"),
+            "units": tabs(tables["units"], "apartments"),
+        },
+        target_size=f"{summary['target_square_feet']:,.0f}",
         charts={name: chart_html(fig, name) for name, fig in figs.items()},
         has_chart={name: fig is not None for name, fig in figs.items()},
         plotly_js=f"https://cdn.plot.ly/plotly-{get_plotlyjs_version()}.min.js",
@@ -402,6 +456,12 @@ UNITS_CSV = [
     "neighborhood",
     "unit",
     "eligibility",
+    "score",
+    "score_low",
+    "score_high",
+    "completeness_percent",
+    "pros",
+    "cons",
     "monthly_cost",
     "base_rent",
     "mandatory_fees",
@@ -409,10 +469,12 @@ UNITS_CSV = [
     "commute_minutes",
     "available_date",
     "square_feet",
+    "kitchen_island",
     "status",
     "reasons",
     "warnings",
     "days_since_verified",
+    "reviewed_on",
     "listing_url",
 ]
 

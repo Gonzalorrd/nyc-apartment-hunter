@@ -1,17 +1,30 @@
 budget = 4000
 preferred_commute = 30
 max_commute = 40
+# Space score: 0 at 400 sq ft, 75 at 600 (comfortable for two), 100 at 800+.
+small_square_feet = 400
+target_square_feet = 600
+preferred_square_feet = 800
 move_start = "2026-12-01"
 move_end = "2026-12-31"
 preferred_move_end = "2026-12-15"
 stale_days = 7
+# Share page: one apartment per building, the one priced closest to the budget (0 = all).
+shared_units_per_building = 1
 destination = "55 Hudson Yards, New York, NY 10001"
 
+# Household priorities (2026-10-23): distance, then space, then finishes. Quiet = not
+# next to an elevated train; island = kitchen island. Size, train and cemetery are
+# scored, not rules (2026-10-24).
 [weights]
-cost = 20
-commute = 20
-condition = 20
-quality = 15
-amenities = 10
-neighborhood = 10
-management = 5
+cost = 10
+commute = 25
+space = 20
+finishes = 15
+quiet = 10
+island = 5
+condition = 5
+quality = 0
+amenities = 5
+neighborhood = 5
+management = 0

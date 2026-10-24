@@ -1,11 +1,13 @@
-"""Relational schema derived from the validated field contract, version 1.
+"""Relational schema derived from the validated field contract, version 3.
 
 SQLAlchemy Core keeps persistence independent of dashboard and Pydantic objects.
 Each entity has its own table and explicit foreign keys/uniqueness constraints.
 """
 
 import os
-from contextlib import contextmanager
+import sqlite3
+from contextlib import closing, contextmanager
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import (
@@ -30,6 +32,22 @@ from sqlalchemy import (
 from apartment_hunter.schemas import SCHEMAS
 
 metadata = MetaData()
+SCHEMA_VERSION = 3
+# Columns (table, column, SQL type) that upgrade schema N to N + 1. `migrate` adds each
+# version's columns and bumps the version in one transaction.
+MIGRATIONS = {
+    1: (
+        ("buildings", "household_status", "VARCHAR DEFAULT 'considering'"),
+        ("buildings", "household_notes", "VARCHAR"),
+    ),
+    2: (
+        ("buildings", "next_to_elevated_train", "BOOLEAN"),
+        ("buildings", "reviewed_on", "DATE"),
+        ("units", "kitchen_island", "BOOLEAN"),
+        ("units", "finishes_score", "FLOAT"),
+        ("units", "reviewed_on", "DATE"),
+    ),
+}
 MONEY_FIELDS = {
     "advertised_rent",
     "base_rent",
@@ -108,8 +126,12 @@ rankings = Table(
 )
 
 
+def db_path(path: str | Path | None = None) -> Path:
+    return Path(path or os.getenv("APARTMENT_DB", "data/apartments.db"))
+
+
 def engine_for(path: str | Path | None = None):
-    path = Path(path or os.getenv("APARTMENT_DB", "data/apartments.db"))
+    path = db_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(f"sqlite:///{path.as_posix()}")
 
@@ -126,9 +148,52 @@ def initialize(engine) -> None:
     with engine.begin() as conn:
         versions = conn.execute(select(schema_version.c.version)).scalars().all()
         if not versions:
-            conn.execute(insert(schema_version).values(version=1))
-        elif versions != [1]:
+            conn.execute(insert(schema_version).values(version=SCHEMA_VERSION))
+        elif len(versions) == 1 and versions[0] in MIGRATIONS:
+            raise ValueError(
+                f"Database schema {versions[0]} is out of date. Close the app and run "
+                "`apartment-hunter migrate`; it backs up the database first."
+            )
+        elif versions != [SCHEMA_VERSION]:
             raise ValueError("Unsupported database schema. Back up and migrate before use.")
+
+
+def migrate(path: str | Path | None = None, backup_dir: Path | None = None) -> dict:
+    """Back up the database, then upgrade it to SCHEMA_VERSION one version at a time.
+
+    Each upgrade and its version bump commit together or not at all (SQLite DDL is
+    transactional). The backup is a consistent copy taken before any change.
+    """
+    path = db_path(path)
+    if not path.exists():
+        raise ValueError(f"No database at {path}")
+    con = sqlite3.connect(path, isolation_level=None)  # Explicit BEGIN/COMMIT below.
+    try:
+        versions = [v for (v,) in con.execute("SELECT version FROM schema_version")]
+        if versions == [SCHEMA_VERSION]:
+            return {"schema": SCHEMA_VERSION, "backup": None}
+        if len(versions) != 1 or versions[0] not in MIGRATIONS:
+            raise ValueError(f"Cannot migrate schema {versions}")
+        version = versions[0]
+        stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        backup = (backup_dir or path.parent / "backups") / f"{path.stem}-schema{version}-{stamp}.db"
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(backup)) as copy:
+            con.backup(copy)
+        while version < SCHEMA_VERSION:
+            con.execute("BEGIN IMMEDIATE")
+            try:
+                for table, column, sql_type in MIGRATIONS[version]:
+                    con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
+                con.execute("UPDATE schema_version SET version = ?", (version + 1,))
+                con.execute("COMMIT")
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
+            version += 1
+    finally:
+        con.close()
+    return {"schema": version, "backup": str(backup)}
 
 
 @contextmanager

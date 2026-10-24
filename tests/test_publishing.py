@@ -58,3 +58,65 @@ def test_empty_database_publishes_empty_snapshot(conn):
     data = snapshot(conn)
     assert data["data_updated_at"] is None
     assert all(data[entity] == [] for entity in PUBLIC_FIELDS)
+
+
+def test_snapshot_leaves_out_dropped_buildings_and_household_triage(conn):
+    kept = save(conn, "buildings", {"name": "Kept", "household_status": "shortlist"})
+    dropped = save(
+        conn,
+        "buildings",
+        {"name": "Dropped", "household_status": "dropped", "household_notes": "Only studios"},
+    )
+    for building in (kept, dropped):
+        save(conn, "units", {"building_id": building, "unit_number": "1A", "status": "listed"})
+        save(conn, "commutes", {"building_id": building, "door_to_door_minutes": 45})
+        save(
+            conn,
+            "risks",
+            {
+                "building_id": building,
+                "category": "noise",
+                "evidence_type": "observation",
+                "summary": "Street noise",
+            },
+        )
+    data = snapshot(conn)
+    for entity in PUBLIC_FIELDS:
+        building_ids = {
+            r["id"] if entity == "buildings" else r["building_id"] for r in data[entity]
+        }
+        assert building_ids == {kept}, entity
+    text = json.dumps(data)
+    assert "household" not in text and "Only studios" not in text and "shortlist" not in text
+
+
+def test_publish_can_keep_the_unit_closest_to_the_budget(conn):
+    first, second = (save(conn, "buildings", {"name": n}) for n in ("Mixed", "All over"))
+    prices = {
+        first: [
+            ("CHEAP", 3000, 0),
+            ("NEAR", 3900, 50),
+            ("OVER", 4050, None),
+            ("UNPRICED", None, None),
+        ],
+        second: [("A", 4300, None), ("B", 4100, 0)],
+    }
+    for building, units in prices.items():
+        for number, rent, fees in units:
+            save(
+                conn,
+                "units",
+                {
+                    "building_id": building,
+                    "unit_number": number,
+                    "base_rent": rent,
+                    "mandatory_fees": fees,
+                },
+            )
+
+    def numbers(per_building):
+        return [u["unit_number"] for u in snapshot(conn, per_building)["units"]]
+
+    assert numbers(1) == ["NEAR", "B"]  # $3,950 all-in beats $3,000; nearest over-budget otherwise.
+    assert numbers(2) == ["CHEAP", "NEAR", "A", "B"]
+    assert len(numbers(None)) == len(numbers(0)) == 6

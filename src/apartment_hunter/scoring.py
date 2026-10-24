@@ -42,6 +42,52 @@ def latest_commute(
     return max(candidates, key=lambda c: (c["verified_on"], c["id"]), default=None)
 
 
+UNKNOWN_POINTS = 50  # In the best estimate an unknown factor counts as "acceptable".
+
+
+def space_score(square_feet: float, config: Preferences) -> float:
+    """0 at the small size, 75 at the target, 100 at the preferred size, linear between.
+
+    It drops steeply below the target, so reaching the target is a clear plus without
+    being a requirement."""
+    small, target = config.small_square_feet, config.target_square_feet
+    if square_feet <= target:
+        return max(0.0, 75 * (square_feet - small) / (target - small))
+    extra = (square_feet - target) / (config.preferred_square_feet - target)
+    return min(100.0, 75 + 25 * extra)
+
+
+def pros_and_cons(
+    unit: dict, building: dict, components: dict, minutes, config: Preferences
+) -> tuple[list[str], list[str]]:
+    """Plain-language reasons from known facts only. Unknown facts appear in neither list."""
+    pros, cons = [], []
+
+    def side(good: bool, text: str) -> None:
+        (pros if good else cons).append(text)
+
+    if components["space"] is not None:
+        size, target = unit["square_feet"], config.target_square_feet
+        big = size >= target
+        side(big, f"{size:,.0f} sq ft, {'at least' if big else 'under'} {target:,.0f}")
+    if components["island"] is not None:
+        side(
+            components["island"] == 100,
+            "Kitchen island" if components["island"] else "No kitchen island",
+        )
+    if components["quiet"] is not None:
+        quiet = components["quiet"] == 100
+        side(quiet, "Not next to an elevated train" if quiet else "Next to an elevated train")
+    if minutes is not None:
+        side(minutes <= config.preferred_commute, f"{minutes:.0f}-minute commute")
+    finishes = components["finishes"]
+    if finishes is not None and (finishes >= 75 or finishes < 50):
+        side(finishes >= 75, f"Finishes rated {finishes:.0f}/100")
+    if building["cemetery_concern"] == "yes":  # Information only since 2026-10-24.
+        cons.append("Cemetery nearby")
+    return pros, cons
+
+
 def rank_unit(
     unit: dict,
     building: dict,
@@ -73,6 +119,7 @@ def rank_unit(
         unit["bedrooms"] == 1 and unit["separate_bedroom"] is True,
         "Separate one-bedroom",
     )
+    square_feet = unit["square_feet"]
     constraint(
         fresh_unit and unit["two_occupants_allowed"] is not None,
         unit["two_occupants_allowed"] is True,
@@ -120,14 +167,15 @@ def rank_unit(
         pest_known = True
     pest_ok = not unresolved and building["pest_status"] == "reviewed_no_serious_unresolved"
     constraint(pest_known, pest_ok, "Serious unresolved pest concern")
-    constraint(
-        fresh_building and building["cemetery_concern"] != "unknown",
-        building["cemetery_concern"] == "no",
-        "Cemetery surroundings concern",
-    )
+    # Size, elevated train and cemetery were hard rules until 2026-10-24. They are now
+    # scored (space, quiet) or shown as a con (cemetery).
+    train = building["next_to_elevated_train"]  # Location fact: no freshness window.
+    island = unit["kitchen_island"]
     own = [e for e in evaluations if e["unit_id"] == unit["id"]]
     if any(e["deal_breaker"] for e in own):
         rejected.append("Occupant deal breaker")
+    if building.get("household_status") == "dropped":  # Not in the public snapshot.
+        rejected.append("Household dropped this building")
     individual = {e["evaluator"]: e["score"] for e in own}
     both = (
         sum(float(individual[p]) for p in ("me", "girlfriend")) / 2
@@ -139,18 +187,30 @@ def rank_unit(
         if cost is not None and fresh_unit
         else None,
         "commute": max(0, min(100, 100 * config.preferred_commute / minutes)) if minutes else None,
+        "space": space_score(square_feet, config)
+        if square_feet is not None and fresh_unit
+        else None,
+        "finishes": unit["finishes_score"] if fresh_unit else None,
+        "quiet": None if train is None else 0 if train else 100,
+        "island": None if island is None or not fresh_unit else 100 if island else 0,
         "condition": building["condition_score"] if fresh_building and pest_ok else None,
         "quality": unit["quality_score"] if fresh_unit else None,
         "amenities": building["amenities_score"] if fresh_building else None,
         "neighborhood": building["neighborhood_score"] if fresh_building else None,
         "management": building["management_score"] if fresh_building else None,
     }
-    total_weight = sum(config.weights.values())
-    score = sum((components[k] or 0) * v for k, v in config.weights.items()) / total_weight
-    completeness = (
-        100 * sum(v for k, v in config.weights.items() if components[k] is not None) / total_weight
-    )
-    warnings = unknown + [f"Unscored {k}" for k, v in components.items() if v is None]
+    # Listings report different facts, so bracket the unknowns: the low end counts them
+    # as 0, the high end as 100, and the score (the midpoint) as UNKNOWN_POINTS.
+    weights = config.weights
+    total_weight = sum(weights.values())
+    known = sum(components[k] * w for k, w in weights.items() if components[k] is not None)
+    unknown_weight = sum(w for k, w in weights.items() if components[k] is None)
+    score = (known + UNKNOWN_POINTS * unknown_weight) / total_weight
+    completeness = 100 * (total_weight - unknown_weight) / total_weight
+    pros, cons = pros_and_cons(unit, building, components, minutes, config)
+    warnings = unknown + [
+        f"Unscored {k}" for k, v in components.items() if v is None and weights[k] > 0
+    ]
     if unit["utilities_estimate"] is None:
         warnings.append("Variable utilities unknown; budget includes mandatory fees only")
     return serializable(
@@ -164,7 +224,9 @@ def rank_unit(
             "mandatory_fees": unit["mandatory_fees"],
             "gross_monthly_cost": cost,
             "net_effective_base_rent": effective_rent(unit),
-            "square_feet": unit["square_feet"],
+            "square_feet": square_feet,
+            "kitchen_island": unit["kitchen_island"],
+            "next_to_elevated_train": building["next_to_elevated_train"],
             "available_date": available,
             "commute_minutes": minutes,
             "amenities": building["amenities"],
@@ -174,14 +236,28 @@ def rank_unit(
             if unknown
             else "eligible",
             "score": round(score, 2),
+            "score_low": round(known / total_weight, 2),
+            "score_high": round((known + 100 * unknown_weight) / total_weight, 2),
+            "pros": pros,
+            "cons": cons,
             "completeness_percent": round(completeness, 1),
             "components": components,
             "raw_factors": {
                 "cost": cost,
                 "commute": minutes,
+                "space": square_feet,
+                "quiet": train,
+                "island": island,
                 **{
                     k: components[k]
-                    for k in ("condition", "quality", "amenities", "neighborhood", "management")
+                    for k in (
+                        "finishes",
+                        "condition",
+                        "quality",
+                        "amenities",
+                        "neighborhood",
+                        "management",
+                    )
                 },
             },
             "weights": config.weights,

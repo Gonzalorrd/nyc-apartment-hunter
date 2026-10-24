@@ -63,6 +63,10 @@ uv run --no-sync apartment-hunter refresh
 uv run --no-sync apartment-hunter export
 ```
 
+After pulling a version that changes the database schema, close the app and run
+`uv run --no-sync apartment-hunter migrate`. It backs up `data/apartments.db` to
+`data/backups/` first; the app refuses to open an old schema until then.
+
 `refresh` honestly reports manual research is required; it performs no web scraping.
 Database validation checks structure, not whether a listing claim is true.
 Exports are at `data/exports/apartment-search.xlsx` and do not modify the database.
@@ -112,10 +116,15 @@ git push
 ```
 
 The snapshot holds buildings, units, commutes and risks only. Notes are replaced by
-`[private evidence withheld]`. Units marked as deal breakers, and leased or
-unavailable units, are left out. Contacts, interactions, tours, tasks, evaluations
-and audit history never leave this computer. Read the diff before every push,
-because the repository is public.
+`[private evidence withheld]`. Units marked as deal breakers, leased or unavailable
+units, and buildings whose household status is `dropped` are left out. Contacts,
+interactions, tours, tasks, evaluations, household status and notes, and audit history
+never leave this computer. Read the diff before every push, because the repository is
+public. The page splits buildings and apartments into **New to review** and **Already
+reviewed** tabs using the review dates you set on the dashboard's **Review** page.
+It shows one apartment per building, the one priced closest to the budget without going
+over (`shared_units_per_building` in `config/preferences.toml`; 0 shows all). The app keeps
+every unit.
 
 On each push to `main`, the `site` workflow runs the tests. It then validates the
 snapshot (data contract and privacy gate), geocodes addresses with the US Census

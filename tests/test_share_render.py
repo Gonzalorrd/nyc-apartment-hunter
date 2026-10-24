@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from apartment_hunter.config import today
@@ -101,3 +102,43 @@ def test_run_report_lists_steps_and_changes(conn, tmp_path):
     assert "- buildings: +1 / -0" in report and "- units: +1 / -0" in report
     step_report(data, snapshot_changes(None, current), data / "run_summary.md")
     assert "No previous snapshot" in (data / "run_summary.md").read_text(encoding="utf-8")
+
+
+def building_item(page, name):
+    """The <li> opening tag of a building in the list."""
+    match = re.search(r'(<li data-item="buildings"[^>]*>)\s*<div class="b-head">' + name, page)
+    assert match, name
+    return match.group(1)
+
+
+def test_site_splits_new_and_reviewed_and_shows_new_facts(conn, tmp_path):
+    load_demo(conn)  # One building and two apartments, none reviewed yet.
+    save(conn, "buildings", {"name": "Seen Lead", "reviewed_on": today()})
+    save(conn, "buildings", {"name": "Fresh Lead", "next_to_elevated_train": True})
+    _, public = build(conn, tmp_path)
+    page = (public / "index.html").read_text(encoding="utf-8")
+    seen, fresh = building_item(page, "Seen Lead"), building_item(page, "Fresh Lead")
+    assert 'data-group="seen"' in seen and seen.endswith(" hidden>")  # Opens on New.
+    assert 'data-group="new"' in fresh and "hidden" not in fresh
+    assert 'aria-selected="true">New to review<span class="n">2</span>' in page
+    assert 'aria-selected="false">Already reviewed<span class="n">1</span>' in page
+    assert page.count('data-item="units" data-group="new"') == 2
+    assert "<li>✓ 650 sq ft, at least 600</li>" in page and "<li>Size unknown</li>" in page
+    assert page.count("650 sq ft") == 1  # Not repeated in the fact list.
+    assert "⚠ next to an elevated train" in page
+    assert "600+ sq ft" in page and "right next to an elevated train.</p>" in page
+    assert "Score <b>84</b>/100</div>" in page  # Unit A: everything known, no range.
+    assert "Score <b>71</b>/100 · range 46–96" in page  # Unit B: half unknown.
+    assert "50% of the score is known" in page
+    assert "<li>✓ Kitchen island</li>" in page and "<li>✕ 32-minute commute</li>" in page
+    assert "2 apartments, from $3,700 · best score 84" in page
+    assert 'New to review</div><div class="tile-value">4<' in page
+
+
+def test_site_opens_on_reviewed_when_nothing_is_new(conn, tmp_path):
+    save(conn, "buildings", {"name": "Seen Lead", "reviewed_on": today()})
+    _, public = build(conn, tmp_path)
+    page = (public / "index.html").read_text(encoding="utf-8")
+    assert "hidden" not in building_item(page, "Seen Lead")
+    assert 'aria-selected="true">Already reviewed<span class="n">1</span>' in page
+    assert re.search(r'data-group="new" hidden>No new buildings since the last review', page)

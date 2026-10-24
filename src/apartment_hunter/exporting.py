@@ -74,7 +74,16 @@ def workbook_bytes(conn) -> bytes:
         (
             "Apartment Rankings",
             ranking,
-            ["unit_id", "building", "unit", "eligibility", "score", "completeness_percent"],
+            [
+                "unit_id",
+                "building",
+                "unit",
+                "eligibility",
+                "score",
+                "score_low",
+                "score_high",
+                "completeness_percent",
+            ],
         ),
         ("Commutes", rows(conn, "commutes"), list(SCHEMAS["commutes"].model_fields)),
         ("Building Risk Research", rows(conn, "risks"), list(SCHEMAS["risks"].model_fields)),

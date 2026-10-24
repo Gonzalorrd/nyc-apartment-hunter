@@ -15,7 +15,20 @@ Open research gaps (from the first build):
   Mercedes House. Parc Vendome is also the only `unverified` lead.
 - Link Apartments QPN (41-46 27th Street) has no reliable Census match. Add ZIP 11101
   in the app.
-- 0 units, commutes and risks are recorded. The unit cards and cost charts have only
+- 2026-10-23: two household review rounds are recorded as private triage
+  (`household_status`/`household_notes`, database only, never in this repo). Dropped
+  buildings are left out of the snapshot. All 29 buildings have `reviewed_on`
+  2026-10-23. Household commute estimates are 5 low-confidence rows that ranking
+  ignores until verified. Requirements, priorities and
+  the New / Already reviewed tabs: see `plans/search-refinement.md`.
+- `next_to_elevated_train` is unknown for every building. Fill it from a map: it feeds the
+  10-point "quiet" factor, and until then it widens each apartment's score range.
+- 2026-10-24: 34 one-bedroom units with base rent up to $4,000 were recorded from official
+  availability pages and landlord feeds (RentCafe), with source and date in each unit's
+  notes. All are "needs checking": no verified weekday commute, pest review or two-occupant
+  confirmation yet. StreetEasy and some official sites return 403 to automated fetches;
+  those buildings were not worked around. Notes on every building record what was found.
+- 0 risks are recorded. Before 2026-10-24 the unit cards and cost charts had only
   been checked on synthetic data. Re-check them with `scripts/phone_screenshot.mjs`
   after the first real units are published.
 - All 28 checked leads were verified 2026-10-19. The site starts flagging buildings

@@ -2,7 +2,9 @@
 
 ## Purpose
 Private local December 2026 rental research for two occupants, maximum $4,000
-including mandatory monthly fees, commute destination 55 Hudson Yards.
+including mandatory monthly fees, commute destination 55 Hudson Yards. Household
+priorities: distance, space (600+ sq ft), finishes. Size, elevated-train adjacency and
+cemeteries are scored as pros/cons, never hard rules (household decision 2026-10-24).
 
 ## Commands
 - Setup: `uv sync --locked --cache-dir .uv-clean-cache`
@@ -11,6 +13,7 @@ including mandatory monthly fees, commute destination 55 Hudson Yards.
 - Format: `uv run --no-sync ruff format src tests`
 - Run: `uv run --no-sync apartment-hunter dashboard`
 - Initialize/seed/export: `uv run --no-sync apartment-hunter init` / `seed` / `export`
+- Schema upgrade (backs up first): `uv run --no-sync apartment-hunter migrate`
 - Share site: `uv run --no-sync apartment-hunter publish`, then `uv run --no-sync doit`
   (output `share/public/`); pushing to `main` deploys via `.github/workflows/site.yml`.
 - No standalone type-check command is configured.

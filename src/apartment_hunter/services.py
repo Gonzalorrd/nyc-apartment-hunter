@@ -4,12 +4,13 @@ import json
 import re
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import get_args
 
 from sqlalchemy import insert, select, update
 
 from apartment_hunter.config import preferences, today
 from apartment_hunter.db import TABLES, audit, prices
-from apartment_hunter.schemas import SCHEMAS
+from apartment_hunter.schemas import SCHEMAS, HouseholdStatus
 
 
 def timestamp() -> str:
@@ -45,6 +46,8 @@ def save(
     values = schema.model_validate(payload).model_dump()
     if values.get("verified_on") and values["verified_on"] > today():
         raise ValueError("Verification date cannot be in the future")
+    if values.get("reviewed_on") and values["reviewed_on"] > today():
+        raise ValueError("Review date cannot be in the future")
     table = TABLES[entity]
     previous = None
     if record_id is not None:
@@ -259,7 +262,14 @@ def research_queue(conn) -> list[dict]:
         and c["mode"] in ("transit", "walking", "ferry")
         and not stale(c, preferences().stale_days)
     }
-    for b in rows(conn, "buildings"):
+    # Shortlisted buildings first; dropped buildings need no more research.
+    order = {status: i for i, status in enumerate(get_args(HouseholdStatus))}
+    buildings = sorted(
+        (b for b in rows(conn, "buildings") if b["household_status"] != "dropped"),
+        key=lambda b: (order[b["household_status"]], b["id"]),
+    )
+    active = {b["id"] for b in buildings}
+    for b in buildings:
         missing = []
         if b["id"] not in contacts:
             missing.append("Find leasing contact")
@@ -267,13 +277,13 @@ def research_queue(conn) -> list[dict]:
             missing.append("Verify weekday door-to-door commute")
         if b["pest_status"] == "unknown":
             missing.append("Review pest records and recent resident evidence")
-        if b["cemetery_concern"] == "unknown":
-            missing.append("Check surroundings and unit views together")
+        if b["next_to_elevated_train"] is None:
+            missing.append("Check on a map whether it is next to an elevated train")
         if stale(b, 30):
             missing.append("Refresh building research")
         tasks.extend({"building": b["name"], "unit": None, "question": m} for m in missing)
     for risk in rows(conn, "risks"):
-        if risk["resolution"] != "resolved":
+        if risk["resolution"] != "resolved" and risk["building_id"] in active:
             tasks.append(
                 {
                     "building": risk["building_id"],
@@ -283,11 +293,15 @@ def research_queue(conn) -> list[dict]:
                 }
             )
     for u in rows(conn, "units"):
+        if u["building_id"] not in active:
+            continue
         missing = []
         if u["available_date"] is None or u["december_confirmed"] is not True:
             missing.append("Confirm December move-in")
         if u["mandatory_fees"] is None:
             missing.append("Confirm every mandatory recurring fee")
+        if u["square_feet"] is None:
+            missing.append("Confirm square footage")
         if u["base_rent"] is None or stale(u, preferences().stale_days):
             missing.append("Verify current gross rent and listing status")
         tasks.extend(

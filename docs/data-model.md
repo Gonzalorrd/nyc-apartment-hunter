@@ -5,7 +5,7 @@ from these schemas, so CLI, CSV, UI and SQLite share a single field contract.
 
 | Table | Identity and relationships | Purpose |
 |---|---|---|
-| buildings | ID; normalized address/name + municipality + state | Building research and evidence-backed factor ratings |
+| buildings | ID; normalized address/name + municipality + state | Building research, evidence-backed factor ratings and private household triage |
 | units | ID; unique building ID + normalized unit number | Actual unit information, availability and costs |
 | commutes | ID; building FK | Multiple sourced routes and departure contexts |
 | risks | ID; building FK | Dated evidence, severity, confidence and resolution |
@@ -46,8 +46,17 @@ before recording unit-specific findings. Keep original seed provenance in notes.
 
 ## Migrations
 
-Current schema version is 1. `create_all` only creates tables; it does not migrate
+Current schema version is 2. `create_all` only creates tables; it does not migrate
 existing ones. Before changing any field/type/key: close the app, copy the database,
 write an explicit transactional migration, increment the version, and add a test
 that migrates a prior fixture without data loss. Do not instruct users to delete a
-real database to upgrade. No migration is needed for this initial release.
+real database to upgrade.
+
+Opening an older database fails with a pointer to `apartment-hunter migrate`. That
+command copies the database to `data/backups/<name>-schema<N>-<timestamp>.db`, then
+runs each step in `db.MIGRATIONS` and its version bump in one transaction.
+Version 2 adds `buildings.household_status` (default `considering`) and
+`buildings.household_notes`. Neither is in `PUBLIC_FIELDS`. Version 3 adds
+`buildings.next_to_elevated_train`, `buildings.reviewed_on`, `units.kitchen_island`,
+`units.finishes_score` and `units.reviewed_on`. These are public: the share page needs
+`reviewed_on` for its New / Already reviewed tabs, and the date carries no opinion.

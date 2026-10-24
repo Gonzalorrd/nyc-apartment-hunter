@@ -48,6 +48,23 @@ when ready. The app has no Gmail permissions, send button or scheduling integrat
 Tour records track your arrangements; they do not book a tour. Evaluations store
 likes, dislikes, scores and deal breakers separately for `me` and `girlfriend`.
 
+Before there are units to evaluate, triage whole buildings together with each
+building's **household status**: `shortlist` (research first), `considering` (default),
+`backup` (keep, but a known drawback such as a long commute) or `dropped`. Put who
+said what, and when, in **household notes**. Dropping a building rules out its units,
+removes it from the research queue, and hides it on Buildings unless you select it.
+It is reversible: set the status back.
+
+## Reviewing new options
+
+**Review** splits buildings and apartments into **New** (no `reviewed_on` date yet)
+and **Already reviewed**. Already reviewed also lists dropped buildings, so you can see
+what you rejected. After you have looked at new items together, select them under New
+and press **Mark as reviewed today**. The public page has the same two tabs. It opens
+on New when there is something new and on Already reviewed otherwise, and the
+change appears after the next `publish` and push. Newly added buildings and units
+always start in New.
+
 ## Export and backups
 
 Export on demand. Each workbook is rebuilt, so repeated exports do not append
@@ -63,8 +80,11 @@ adding authentication and reconsidering personal-data handling.
 
 The public share page (see README, "Share the results") is a read-only view. It shows
 buildings, units, costs, commutes and freshness, but never evaluations, contacts,
-tours, tasks or notes. Record your partner's likes, dislikes and deal breakers in the
-app yourself. A deal breaker removes the unit from the next `publish`.
+tours, tasks, household status or notes. It does show review dates, because the New /
+Already reviewed tabs need them. Record your partner's likes, dislikes and deal
+breakers in the app yourself. A deal breaker removes the unit, and a `dropped` household
+status removes the building, from the next `publish`. Each building contributes one
+apartment, the one priced closest to the budget (`shared_units_per_building`).
 
 ## Working with Codex
 

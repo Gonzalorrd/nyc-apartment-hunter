@@ -11,6 +11,8 @@ Score = Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
 Positive = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Confidence = Literal["low", "medium", "high"]
 Verification = Literal["unverified", "source_checked", "manually_verified"]
+# Joint household triage of a building lead, in priority order. Private: never published.
+HouseholdStatus = Literal["shortlist", "considering", "backup", "dropped"]
 CONTACT_STATUSES = (
     "not_contacted",
     "contacted",
@@ -77,10 +79,16 @@ class BuildingInput(Record):
         "unknown"
     )
     cemetery_concern: Literal["unknown", "no", "yes"] = "unknown"
+    next_to_elevated_train: bool | None = Field(
+        default=None, description="Directly beside an elevated subway, PATH or rail line"
+    )
     condition_score: Score | None = None
     amenities_score: Score | None = None
     neighborhood_score: Score | None = None
     management_score: Score | None = None
+    household_status: HouseholdStatus = "considering"
+    household_notes: str | None = None
+    reviewed_on: date | None = Field(default=None, description="Date the household reviewed it")
 
 
 class UnitInput(Record):
@@ -113,7 +121,12 @@ class UnitInput(Record):
     outdoor_space: str | None = None
     exposure: str | None = None
     view_notes: str | None = None
+    kitchen_island: bool | None = None
+    finishes_score: Score | None = Field(
+        default=None, description="0-100: renovated kitchen and bath, appliances, floors"
+    )
     quality_score: Score | None = None
+    reviewed_on: date | None = Field(default=None, description="Date the household reviewed it")
 
     @field_validator("unit_number")
     @classmethod
